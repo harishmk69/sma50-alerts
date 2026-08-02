@@ -32,11 +32,11 @@ for symbol in WATCHLIST:
         diff = ((close - sma50) / sma50) * 100
 
         stock_info = (
-            f"{symbol}
+            f"{symbol}\n"
 "
-            f"Close: {close:.2f}
+            f"Close: {close:.2f}\n"
 "
-            f"SMA50: {sma50:.2f}
+            f"SMA50: {sma50:.2f}\n"
 "
             f"Diff: {diff:.2f}%"
         )
