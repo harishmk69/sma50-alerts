@@ -2,7 +2,7 @@ name: SMA50 Alert
 
 on:
   schedule:
-    - cron: "30 13 * * 1-5"
+    - cron: "45 13 * * 1-5"
 
   workflow_dispatch:
 
