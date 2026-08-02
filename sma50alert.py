@@ -1,3 +1,4 @@
+import os
 import yfinance as yf
 import pandas as pd
 import requests
@@ -6,8 +7,8 @@ import requests
 # CONFIGURATION
 # =====================
 
-BOT_TOKEN = "YOUR_BOT_TOKEN"
-CHAT_ID = "YOUR_CHAT_ID"
+BOT_TOKEN = "os.environ["BOT_TOKEN"]
+CHAT_ID = "os.environ["CHAT_ID"]
 
 WATCHLIST = [
     "RELIANCE.NS",
