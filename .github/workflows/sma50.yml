@@ -1,0 +1,27 @@
+name: SMA50 Alert
+
+on:
+  schedule:
+    - cron: "30 13 * * 1-5"
+
+  workflow_dispatch:
+
+jobs:
+  check_sma:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Run Script
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python SMA50Alert.py
