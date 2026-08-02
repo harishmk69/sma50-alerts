@@ -2,13 +2,10 @@ import os
 import yfinance as yf
 import pandas as pd
 import requests
+import os
 
-# =====================
-# CONFIGURATION
-# =====================
-
-BOT_TOKEN = "os.environ["BOT_TOKEN"]
-CHAT_ID = "os.environ["CHAT_ID"]
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
 
 WATCHLIST = [
     "RELIANCE.NS",
@@ -18,10 +15,6 @@ WATCHLIST = [
     "ICICIBANK.NS",
     "SBIN.NS"
 ]
-
-# =====================
-# ANALYSIS
-# =====================
 
 above_sma = []
 exit_stocks = []
@@ -52,17 +45,14 @@ for symbol in WATCHLIST:
             f"Diff: {diff:.2f}%"
         )
 
-        if close < sma50:
+        #if close < sma50:
+        if True:
             exit_stocks.append(stock_info)
         else:
             above_sma.append(stock_info)
 
     except Exception as e:
         print(f"Error processing {symbol}: {e}")
-
-# =====================
-# MESSAGE
-# =====================
 
 message = "📊 SMA50 STATUS REPORT\n\n"
 
@@ -74,10 +64,6 @@ if exit_stocks:
 if above_sma:
     message += "✅ ABOVE SMA50\n\n"
     message += "\n\n".join(above_sma)
-
-# =====================
-# TELEGRAM
-# =====================
 
 requests.post(
     f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
