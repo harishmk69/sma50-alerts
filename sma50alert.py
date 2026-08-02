@@ -61,9 +61,8 @@ message = (
 )
 
 if exit_stocks:
-    message += "🚨 EXITS (Below SMA50)
+    message += "🚨 EXITS (Below SMA50)"
 
-"
     message += "
 
 ".join([item[1] for item in exit_stocks])
