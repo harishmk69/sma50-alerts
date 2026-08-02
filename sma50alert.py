@@ -1,26 +1,18 @@
-import os
 import yfinance as yf
-import pandas as pd
 import requests
 import os
+from datetime import datetime
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
-WATCHLIST = [
-    "RELIANCE.NS",
-    "TCS.NS",
-    "INFY.NS",
-    "HDFCBANK.NS",
-    "ICICIBANK.NS",
-    "SBIN.NS"
-]
+with open("watchlist.txt", "r") as f:
+    WATCHLIST = [line.strip() for line in f if line.strip()]
 
-above_sma = []
 exit_stocks = []
+scanned = 0
 
 for symbol in WATCHLIST:
-
     try:
         df = yf.download(
             symbol,
@@ -33,37 +25,52 @@ for symbol in WATCHLIST:
         if len(df) < 50:
             continue
 
+        scanned += 1
+
         close = float(df["Close"].iloc[-1])
         sma50 = float(df["Close"].rolling(50).mean().iloc[-1])
-
         diff = ((close - sma50) / sma50) * 100
 
         stock_info = (
-            f"{symbol}\n"
-            f"Close: {close:.2f}\n"
-            f"SMA50: {sma50:.2f}\n"
+            f"{symbol}
+"
+            f"Close: {close:.2f}
+"
+            f"SMA50: {sma50:.2f}
+"
             f"Diff: {diff:.2f}%"
         )
 
-        #if close < sma50:
-        if True:
-            exit_stocks.append(stock_info)
-        else:
-            above_sma.append(stock_info)
+        if close < sma50:
+            exit_stocks.append((diff, stock_info))
 
     except Exception as e:
         print(f"Error processing {symbol}: {e}")
 
-message = "📊 SMA50 STATUS REPORT\n\n"
+exit_stocks.sort(key=lambda x: x[0])
+
+message = (
+    f"✅ SMA50 Scan Completed
+
+"
+    f"Stocks Scanned: {scanned}
+"
+    f"Exits: {len(exit_stocks)}
+"
+    f"Date: {datetime.now().strftime('%Y-%m-%d')}
+
+"
+)
 
 if exit_stocks:
-    message += "🚨 EXITS (Below SMA50)\n\n"
-    message += "\n\n".join(exit_stocks)
-    message += "\n\n"
+    message += "🚨 EXITS (Below SMA50)
 
-if above_sma:
-    message += "✅ ABOVE SMA50\n\n"
-    message += "\n\n".join(above_sma)
+"
+    message += "
+
+".join([item[1] for item in exit_stocks])
+else:
+    message += "🎉 No stocks are below SMA50 today."
 
 requests.post(
     f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
