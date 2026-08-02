@@ -33,11 +33,11 @@ for symbol in WATCHLIST:
 
         stock_info = (
             f"{symbol}\n"
-"
+
             f"Close: {close:.2f}\n"
-"
+
             f"SMA50: {sma50:.2f}\n"
-"
+
             f"Diff: {diff:.2f}%"
         )
 
@@ -50,16 +50,14 @@ for symbol in WATCHLIST:
 exit_stocks.sort(key=lambda x: x[0])
 
 message = (
-    f"✅ SMA50 Scan Completed
+    f"✅ SMA50 Scan Completed\n"
 
-"
-    f"Stocks Scanned: {scanned}
-"
-    f"Exits: {len(exit_stocks)}
-"
-    f"Date: {datetime.now().strftime('%Y-%m-%d')}
+    f"Stocks Scanned: {scanned}\n"
 
-"
+    f"Exits: {len(exit_stocks)}\n"
+
+    f"Date: {datetime.now().strftime('%Y-%m-%d')}"
+
 )
 
 if exit_stocks:
