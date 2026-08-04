@@ -31,6 +31,13 @@ for symbol in WATCHLIST:
         sma50 = float(df["Close"].rolling(50).mean().iloc[-1])
         diff = ((close - sma50) / sma50) * 100
 
+if symbol == "BAJEL.NS":
+print(
+f"DEBUG BAJEL.NS | "
+f"Close={close:.2f} | "
+f"SMA50={sma50:.2f} | "
+f"Diff={diff:.2f}%"
+)
         stock_info = (
             f"{symbol}\n"
             f"Close: {close:.2f}\n"
