@@ -26,10 +26,13 @@ for symbol in WATCHLIST:
             continue
 
         scanned += 1
-
-        close = float(df["Close"].iloc[-1])
-        sma50 = float(df["Close"].rolling(50).mean().iloc[-1])
+        # Force extraction of a single scalar value using .item()
+        close = float(df["Close"].iloc[-1].item())
+        sma50 = float(df["Close"].rolling(50).mean().iloc[-1].item())
         diff = ((close - sma50) / sma50) * 100
+        #close = float(df["Close"].iloc[-1])
+        #sma50 = float(df["Close"].rolling(50).mean().iloc[-1])
+        #diff = ((close - sma50) / sma50) * 100
 
         # Debug block placed inside try block with correct indentation
         if symbol == "BAJEL.NS":
