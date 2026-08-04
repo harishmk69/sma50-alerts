@@ -30,19 +30,7 @@ for symbol in WATCHLIST:
         close = float(df["Close"].iloc[-1].item())
         sma50 = float(df["Close"].rolling(50).mean().iloc[-1].item())
         diff = ((close - sma50) / sma50) * 100
-        #close = float(df["Close"].iloc[-1])
-        #sma50 = float(df["Close"].rolling(50).mean().iloc[-1])
-        #diff = ((close - sma50) / sma50) * 100
-
-        # Debug block placed inside try block with correct indentation
-        if symbol == "BAJEL.NS":
-            print(
-                f"DEBUG BAJEL.NS | "
-                f"Close={close:.2f} | "
-                f"SMA50={sma50:.2f} | "
-                f"Diff={diff:.2f}%"
-            )
-
+        
         stock_info = (
             f"{symbol}\n"
             f"Close: {close:.2f}\n"
