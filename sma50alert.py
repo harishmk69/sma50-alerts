@@ -1,13 +1,26 @@
 import yfinance as yf
-import requests
 import os
+import smtplib
 from datetime import datetime
+from email.mime.text import MIMEText
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
+# =====================
+# CONFIGURATION
+# =====================
+
+EMAIL_ADDRESS = os.environ["EMAIL_ADDRESS"]
+EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
+
+# =====================
+# WATCHLIST
+# =====================
 
 with open("watchlist.txt", "r") as f:
     WATCHLIST = [line.strip() for line in f if line.strip()]
+
+# =====================
+# ANALYSIS
+# =====================
 
 exit_stocks = []
 scanned = 0
@@ -26,11 +39,13 @@ for symbol in WATCHLIST:
             continue
 
         scanned += 1
-        # Force extraction of a single scalar value using .item()
+
+        # .item() prevents 'float() argument must be a string or a real number, not Series'
         close = float(df["Close"].iloc[-1].item())
         sma50 = float(df["Close"].rolling(50).mean().iloc[-1].item())
+
         diff = ((close - sma50) / sma50) * 100
-        
+
         stock_info = (
             f"{symbol}\n"
             f"Close: {close:.2f}\n"
@@ -44,7 +59,12 @@ for symbol in WATCHLIST:
     except Exception as e:
         print(f"Error processing {symbol}: {e}")
 
+# Sort worst performers first
 exit_stocks.sort(key=lambda x: x[0])
+
+# =====================
+# MESSAGE
+# =====================
 
 message = (
     f"✅ SMA50 Scan Completed\n\n"
@@ -55,16 +75,27 @@ message = (
 
 if exit_stocks:
     message += "🚨 EXITS (Below SMA50)\n\n"
-    message += "\n\n".join([item[1] for item in exit_stocks])
+    message += "\n----------------------------------------\n".join(
+        [item[1] for item in exit_stocks]
+    )
 else:
     message += "🎉 No stocks are below SMA50 today."
 
-requests.post(
-    f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-    data={
-        "chat_id": CHAT_ID,
-        "text": message
-    }
-)
+# =====================
+# EMAIL
+# =====================
 
-print(message)
+subject = f"SMA50 Scan - {datetime.now().strftime('%Y-%m-%d')}"
+
+email = MIMEText(message)
+email["Subject"] = subject
+email["From"] = EMAIL_ADDRESS
+email["To"] = EMAIL_ADDRESS
+
+try:
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        server.send_message(email)
+    print("Email sent successfully!")
+except Exception as e:
+    print(f"Failed to send email: {e}")
