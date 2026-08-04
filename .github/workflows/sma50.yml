@@ -25,6 +25,6 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }} 
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python sma50alert.py
