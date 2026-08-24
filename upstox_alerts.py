@@ -1,4 +1,15 @@
 import os
+
+log = []
+
+log.append("UPSTOX SCRIPT STARTED")
+
+token = os.getenv("UPSTOX_ACCESS_TOKEN")
+
+if token:
+    log.append("Access token found")
+else:
+    log.append("ERROR: Access token missing")
 import json
 import requests
 import traceback
@@ -323,4 +334,5 @@ if __name__ == "__main__":
         f.write(report)
 
     print("Report Generated")
-  
+with open("upstox_report.txt","w") as f;
+    f.write("\n".join(log))
