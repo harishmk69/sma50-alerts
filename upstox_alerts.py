@@ -336,3 +336,6 @@ if __name__ == "__main__":
     print("Report Generated")
 with open("upstox_report.txt","w") as f:
     f.write("\n".join(log))
+     print("===== Report =====")
+     print(report)
+     print("===== End Report =====")
