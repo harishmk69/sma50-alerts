@@ -5,7 +5,9 @@ log = []
 log.append("UPSTOX SCRIPT STARTED")
 
 token = os.getenv("UPSTOX_ACCESS_TOKEN")
-
+print("Token found:", bool(token))
+if token:
+    print("Token Length:", len(token))
 if token:
     log.append("Access token found")
 else:
@@ -15,7 +17,7 @@ import requests
 import traceback
 from datetime import datetime
 
-ACCESS_TOKEN = "YOUR_TOKEN_HERE"
+ACCESS_TOKEN = "os.getenv(UPSTOX_ACCESS_TOKEN)"
 
 HEADERS = {
     "Accept": "application/json",
