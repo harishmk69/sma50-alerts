@@ -1,12 +1,12 @@
-name: SMA50 Alert
+name: SMA50 & Fundamentals Alert
 
 on:
   schedule:
-    - cron: "45 11 * * 1-5"
+    - cron: "45 11 * * 1-5" # 5:15 PM IST on weekdays
   workflow_dispatch:
 
 jobs:
-  check_sma:
+  run_market_alert:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,24 +16,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      # 1. Run Upstox FIRST to generate portfolio_report.html
-      - name: Generate Upstox Report
+      - name: Run Alert Script & Send Email
         env:
-          UPSTOX_API_KEY: ${{ secrets.UPSTOX_API_KEY }}
-          UPSTOX_API_SECRET: ${{ secrets.UPSTOX_API_SECRET }}
-          UPSTOX_RURL: ${{ secrets.UPSTOX_RURL }}
-          UPSTOX_MOBILE: ${{ secrets.UPSTOX_MOBILE }}
-          UPSTOX_PIN: ${{ secrets.UPSTOX_PIN }}
-          UPSTOX_TOTP_KEY: ${{ secrets.UPSTOX_TOTP_KEY }}
-        run: python upstox_alerts.py
-
-      # 2. Run SMA50 SECOND to combine and send the email
-      - name: Run SMA50 and Send Email
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
           EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python sma50alert.py
