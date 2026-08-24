@@ -27,10 +27,13 @@ jobs:
           EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python sma50alert.py
-      - name: Run Upstox Alerts
-        continue-on-error: true
+      - name: Run Alert Script
         env:
           UPSTOX_API_KEY: ${{ secrets.UPSTOX_API_KEY }}
           UPSTOX_API_SECRET: ${{ secrets.UPSTOX_API_SECRET }}
-          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
+          UPSTOX_RURL: ${{ secrets.UPSTOX_RURL }}
+          UPSTOX_MOBILE: ${{ secrets.UPSTOX_MOBILE }}
+          UPSTOX_PIN: ${{ secrets.UPSTOX_PIN }}
+          UPSTOX_TOTP_KEY: ${{ secrets.UPSTOX_TOTP_KEY }}
         run: python upstox_alerts.py
+      
