@@ -262,6 +262,63 @@ def build_report():
             )
         )
 
+    html = f"""
+    <html>
+    <body>
+
+    <h2>
+    Portfolio Intelligence
+    </h2>
+
+    <p>
+    Generated:
+    {datetime.now()}
+    </p>
+
+    <hr>
+
+    <h3>
+    Corporate Actions
+    </h3>
+
+    <pre>
+    {"\n".join(corporate_section)}
+    </pre>
+
+    <hr>
+
+    <h3>
+    Shareholding
+    </h3>
+
+    <pre>
+    {"\n".join(shareholding_section)}
+    </pre>
+
+    <hr>
+
+    <h3>
+    Quarterly Results
+    </h3>
+
+    <pre>
+    {"\n".join(financial_section)}
+    </pre>
+
+    <hr>
+
+    <h3>
+    System Issues
+    </h3>
+
+    <pre>
+    {"\n".join(errors) if errors else "None"}
+    </pre>
+
+    </body>
+    </html>
+    """
+
     return html
 
 
@@ -279,4 +336,3 @@ if __name__ == "__main__":
     print("Report Generated")
 with open("upstox_report.txt","w") as f:
     f.write("\n".join(log))
-
