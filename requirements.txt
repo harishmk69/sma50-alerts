@@ -2,5 +2,4 @@ yfinance
 pandas
 requests
 numpy
-requests
 pyotp
