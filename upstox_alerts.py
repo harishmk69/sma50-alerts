@@ -334,5 +334,5 @@ if __name__ == "__main__":
         f.write(report)
 
     print("Report Generated")
-with open("upstox_report.txt","w") as f;
+with open("upstox_report.txt","w") as f:
     f.write("\n".join(log))
