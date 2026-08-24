@@ -332,10 +332,8 @@ if __name__ == "__main__":
         encoding="utf-8"
     ) as f:
         f.write(report)
-
+    print(report)
     print("Report Generated")
 with open("upstox_report.txt","w") as f:
     f.write("\n".join(log))
-     print("===== Report =====")
-     print(report)
-     print("===== End Report =====")
+
