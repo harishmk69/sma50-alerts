@@ -6,7 +6,7 @@ from email.mime.text import MIMEText
 import pandas as pd
 import pandas_market_calendars as mcal
 import yfinance as yf
-from nsepython import nse_fiidii  # Added for FII/DII data tracking
+from nsepython import nse_fiidii  # Added for FII/DII tracking
 
 # =====================
 # 1. MARKET HOLIDAY CHECK
@@ -42,7 +42,7 @@ with open("watchlist.txt", "r") as f:
     WATCHLIST = [line.strip() for line in f if line.strip()]
 
 # =====================
-# 4. HELPER: INDEX METRICS & FII/DII
+# 4. HELPER: INDEX METRICS & FII/DII DATA
 # =====================
 def get_index_metrics(ticker_symbol):
     """Fetches today's close, daily change %, and YTD return for a market index."""
@@ -68,18 +68,15 @@ def get_index_metrics(ticker_symbol):
     return None
 
 def get_daily_fii_dii_html():
-    """Fetches provisional daily FII/DII activities and formats them as HTML."""
+    """Fetches provisional daily FII/DII activities and formats them into an HTML display widget."""
     try:
         raw_data = nse_fiidii()
         df = pd.DataFrame(raw_data)
-        
-        # Clean up column names for readability
         df.columns = ['Category', 'Date', 'Buy', 'Sell', 'Net']
         
         fii_net = 0.0
         dii_net = 0.0
         
-        # Extract net values to assign indicators
         for _, row in df.iterrows():
             category = str(row['Category']).upper()
             try:
@@ -96,22 +93,22 @@ def get_daily_fii_dii_html():
         dii_color = "#188038" if dii_net >= 0 else "#d93025"
 
         return f"""
-        <div style="flex: 1; background: #ffffff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e0e0e0;">
-            <div style="font-size: 13px; color: #5f6368; font-weight: bold;">🏢 INSTITUTIONAL ACTIVITY (Cr)</div>
-            <div style="font-size: 14px; margin-top: 4px; border-bottom: 1px solid #f1f3f4; padding-bottom: 4px;">
-                <b>FII Net:</b> <span style="color: {fii_color}; font-weight: bold;">{fii_net:+.2f}</span>
+        <div style="flex: 1; background: #ffffff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e0e0e0; min-width: 180px;">
+            <div style="font-size: 13px; color: #5f6368; font-weight: bold;">🏢 INSTITUTIONAL NET (Cr)</div>
+            <div style="font-size: 14px; margin-top: 6px; border-bottom: 1px solid #f1f3f4; padding-bottom: 4px;">
+                <b>FII:</b> <span style="color: {fii_color}; font-weight: bold;">{fii_net:+.2f}</span>
             </div>
             <div style="font-size: 14px; margin-top: 4px;">
-                <b>DII Net:</b> <span style="color: {dii_color}; font-weight: bold;">{dii_net:+.2f}</span>
+                <b>DII:</b> <span style="color: {dii_color}; font-weight: bold;">{dii_net:+.2f}</span>
             </div>
         </div>
         """
     except Exception as e:
-        print(f"Error fetching FII/DII details: {e}")
+        print(f"Error fetching FII/DII metrics: {e}")
         return """
-        <div style="flex: 1; background: #ffffff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e0e0e0;">
-            <div style="font-size: 13px; color: #5f6368; font-weight: bold;">🏢 INSTITUTIONAL ACTIVITY</div>
-            <div style="font-size: 14px; margin-top: 4px; color: #d93025;">Unavailable today</div>
+        <div style="flex: 1; background: #ffffff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e0e0e0; min-width: 180px;">
+            <div style="font-size: 13px; color: #5f6368; font-weight: bold;">🏢 INSTITUTIONAL NET (Cr)</div>
+            <div style="font-size: 14px; margin-top: 6px; color: #d93025;">Provisional data offline</div>
         </div>
         """
 
