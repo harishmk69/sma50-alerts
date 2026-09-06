@@ -134,18 +134,18 @@ for symbol in WATCHLIST:
         scanned += 1
 
         # Technical Indicators (SMA50 & Diff)
-        close = float(df["Close"].iloc[-1].item())
-        sma50 = float(df["Close"].rolling(50).mean().iloc[-1].item())
+        close = float(df["Close"].iloc[-1])
+        sma50 = float(df["Close"].rolling(50).mean().iloc[-1])
         diff = ((close - sma50) / sma50) * 100
 
         # 52-Week Range & Stock YTD
-        week_52_high = float(df["Close"].max().item())
-        week_52_low = float(df["Close"].min().item())
+        week_52_high = float(df["Close"].max())
+        week_52_low = float(df["Close"].min())
         
         current_year = datetime.now().year
         ytd_df = df[df.index >= f"{current_year}-01-01"]
         if len(ytd_df) >= 2:
-            ytd_open = float(ytd_df["Close"].iloc[0].item())
+            ytd_open = float(ytd_df["Close"].iloc[0])
             stock_ytd = ((close - ytd_open) / ytd_open) * 100
             stock_ytd_str = f"<span style='color: {'#188038' if stock_ytd >= 0 else '#d93025'}; font-weight: bold;'>{stock_ytd:+.2f}%</span>"
         else:
@@ -237,7 +237,7 @@ for symbol in WATCHLIST:
             fin_summary = f"{latest_q_date} -> Rev: {rev_str}, PAT: {pat_str}"
 
         # ---------------------------------------------
-        # HTML CARD GENERATION (Indented cleanly inside try block)
+        # HTML CARD GENERATION (Using clean f-string)
         # ---------------------------------------------
-        close_str = f"₹{close:.2f}"
-        range_str = f"₹{week_52_low:.2f} – ₹{week_52_high:.2f}"
+        card_html = f"""
+        <div style="border-bottom: 1px solid #e0e0e0; padding-bottom: 12px; margin-bottom: 12px;">
