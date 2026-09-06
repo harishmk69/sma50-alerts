@@ -18,7 +18,8 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
-
+             pip install nsepython
+             
       - name: Run Alert Script & Send Email
         env:
           EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
