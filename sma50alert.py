@@ -134,18 +134,18 @@ for symbol in WATCHLIST:
         scanned += 1
 
         # Technical Indicators (SMA50 & Diff)
-        close = float(df["Close"].iloc[-1])
-        sma50 = float(df["Close"].rolling(50).mean().iloc[-1])
+        close = float(df["Close"].iloc[-1].item())
+        sma50 = float(df["Close"].rolling(50).mean().iloc[-1].item())
         diff = ((close - sma50) / sma50) * 100
 
         # 52-Week Range & Stock YTD
-        week_52_high = float(df["Close"].max())
-        week_52_low = float(df["Close"].min())
+        week_52_high = float(df["Close"].max().item())
+        week_52_low = float(df["Close"].min().item())
         
         current_year = datetime.now().year
         ytd_df = df[df.index >= f"{current_year}-01-01"]
         if len(ytd_df) >= 2:
-            ytd_open = float(ytd_df["Close"].iloc[0])
+            ytd_open = float(ytd_df["Close"].iloc[0].item())
             stock_ytd = ((close - ytd_open) / ytd_open) * 100
             stock_ytd_str = f"<span style='color: {'#188038' if stock_ytd >= 0 else '#d93025'}; font-weight: bold;'>{stock_ytd:+.2f}%</span>"
         else:
@@ -236,7 +236,10 @@ for symbol in WATCHLIST:
             pat_str = f"₹{pat/1e7:.2f} Cr" if pat and pd.notna(pat) else "N/A"
             fin_summary = f"{latest_q_date} -> Rev: {rev_str}, PAT: {pat_str}"
 
-        # Card Layout
-        fundamentals_data.append(f"""
-        <div style="border-bottom: 1px solid #e0e0e0; padding-bottom: 12px; margin-bottom: 12px;">
-            <div style="font-size: 16px; font-weight: bold; color: #1a73e8; margin-bottom: 4px;">{symbol}</div>
+        # ---------------------------------------------
+        # HTML CARD GENERATION (Clean Text-Concatenation)
+        # ---------------------------------------------
+        close_str = f"₹{close:.2f}"
+        range_str = f"₹{week_52_low:.2f} – ₹{week_52_high:.2f}"
+        symbol_str = str(symbol)
+
