@@ -222,13 +222,13 @@ msg["To"] = EMAIL_ADDRESS
 
 try:
 
-with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
 
-server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+    server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
 
-server.send_message(msg) 
+    server.send_message(msg) 
 
-print("Email sent successfully.") 
+    print("Email sent successfully.") 
 
 except Exception as e:
 
