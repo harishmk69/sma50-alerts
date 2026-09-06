@@ -237,9 +237,7 @@ for symbol in WATCHLIST:
             fin_summary = f"{latest_q_date} -> Rev: {rev_str}, PAT: {pat_str}"
 
         # ---------------------------------------------
-        # HTML CARD GENERATION (Clean Text-Concatenation)
+        # HTML CARD GENERATION (Indented cleanly inside try block)
         # ---------------------------------------------
         close_str = f"₹{close:.2f}"
         range_str = f"₹{week_52_low:.2f} – ₹{week_52_high:.2f}"
-        symbol_str = str(symbol)
-
