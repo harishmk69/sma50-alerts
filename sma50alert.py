@@ -6,13 +6,12 @@ from email.mime.text import MIMEText
 import pandas as pd
 import pandas_market_calendars as mcal
 import yfinance as yf
-from nsepython import nse_fiidii  # Added for FII/DII tracking
+from nsepython import nse_fiidii
 
 # =====================
 # 1. MARKET HOLIDAY CHECK
 # =====================
 def is_nse_market_open_today():
-    """Checks if today is an active trading day on NSE."""
     try:
         nse = mcal.get_calendar("NSE")
         today_str = datetime.now().strftime("%Y-%m-%d")
@@ -20,32 +19,25 @@ def is_nse_market_open_today():
         return not schedule.empty
     except Exception as e:
         print(f"Warning checking calendar: {e}")
-        # Fallback: At least skip Saturday (5) & Sunday (6)
         return datetime.now().weekday() < 5
 
 if not is_nse_market_open_today():
-    print(f"⏸️ NSE Market is closed today ({datetime.now().strftime('%Y-%m-%d')}). Exiting script without sending email.")
+    print(f"⏸️ NSE Market closed today ({datetime.now().strftime('%Y-%m-%d')}). Exiting.")
     sys.exit(0)
 
-print(f"✅ Market is open today ({datetime.now().strftime('%Y-%m-%d')}). Proceeding with analysis...")
-
 # =====================
-# 2. CONFIGURATION
+# 2. CONFIGURATION & WATCHLIST
 # =====================
 EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 
-# =====================
-# 3. LOAD WATCHLIST
-# =====================
 with open("watchlist.txt", "r") as f:
     WATCHLIST = [line.strip() for line in f if line.strip()]
 
 # =====================
-# 4. HELPER: INDEX METRICS & FII/DII DATA
+# 3. METRICS PULLERS
 # =====================
 def get_index_metrics(ticker_symbol):
-    """Fetches today's close, daily change %, and YTD return for a market index."""
     try:
         current_year = datetime.now().year
         start_date = f"{current_year}-01-01"
@@ -54,70 +46,38 @@ def get_index_metrics(ticker_symbol):
             first_close = float(data["Close"].iloc[0].item())
             last_close = float(data["Close"].iloc[-1].item())
             prev_close = float(data["Close"].iloc[-2].item())
-            
-            ytd = ((last_close - first_close) / first_close) * 100
-            day_change = ((last_close - prev_close) / prev_close) * 100
-            
             return {
                 "close": last_close,
-                "day_change": day_change,
-                "ytd": ytd
+                "day_change": ((last_close - prev_close) / prev_close) * 100,
+                "ytd": ((last_close - first_close) / first_close) * 100
             }
     except Exception as e:
-        print(f"Error fetching metrics for {ticker_symbol}: {e}")
+        print(f"Index error {ticker_symbol}: {e}")
     return None
 
-def get_daily_fii_dii_html():
-    """Fetches provisional daily FII/DII activities and formats them into an HTML display widget."""
+def get_fii_dii_metrics():
     try:
         raw_data = nse_fiidii()
         df = pd.DataFrame(raw_data)
         df.columns = ['Category', 'Date', 'Buy', 'Sell', 'Net']
-        
-        fii_net = 0.0
-        dii_net = 0.0
-        
+        fii, dii = 0.0, 0.0
         for _, row in df.iterrows():
-            category = str(row['Category']).upper()
-            try:
-                net_val = float(row['Net'])
-            except:
-                net_val = 0.0
-                
-            if 'FII' in category:
-                fii_net = net_val
-            elif 'DII' in category:
-                dii_net = net_val
-
-        fii_color = "#188038" if fii_net >= 0 else "#d93025"
-        dii_color = "#188038" if dii_net >= 0 else "#d93025"
-
-        return f"""
-        <div style="flex: 1; background: #ffffff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e0e0e0; min-width: 180px;">
-            <div style="font-size: 13px; color: #5f6368; font-weight: bold;">🏢 INSTITUTIONAL NET (Cr)</div>
-            <div style="font-size: 14px; margin-top: 6px; border-bottom: 1px solid #f1f3f4; padding-bottom: 4px;">
-                <b>FII:</b> <span style="color: {fii_color}; font-weight: bold;">{fii_net:+.2f}</span>
-            </div>
-            <div style="font-size: 14px; margin-top: 4px;">
-                <b>DII:</b> <span style="color: {dii_color}; font-weight: bold;">{dii_net:+.2f}</span>
-            </div>
-        </div>
-        """
+            cat = str(row['Category']).upper()
+            val = float(row['Net']) if pd.notna(row['Net']) else 0.0
+            if 'FII' in cat: fii = val
+            elif 'DII' in cat: dii = val
+        return {"fii": fii, "dii": dii}
     except Exception as e:
-        print(f"Error fetching FII/DII metrics: {e}")
-        return """
-        <div style="flex: 1; background: #ffffff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e0e0e0; min-width: 180px;">
-            <div style="font-size: 13px; color: #5f6368; font-weight: bold;">🏢 INSTITUTIONAL NET (Cr)</div>
-            <div style="font-size: 14px; margin-top: 6px; color: #d93025;">Provisional data offline</div>
-        </div>
-        """
+        print(f"FII/DII Error: {e}")
+        return None
 
-nifty_stats = get_index_metrics("^NSEI")
-sensex_stats = get_index_metrics("^BSESN")
-fii_dii_html_box = get_daily_fii_dii_html()
+# Fetch global data blocks
+nifty = get_index_metrics("^NSEI")
+sensex = get_index_metrics("^BSESN")
+fiidii = get_fii_dii_metrics()
 
 # =====================
-# 5. SCAN & PROCESS STOCKS
+# 4. PORTFOLIO SCANNER LOOP
 # =====================
 exit_stocks = []
 fundamentals_data = []
@@ -127,117 +87,133 @@ for symbol in WATCHLIST:
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1y", interval="1d", auto_adjust=True)
-
-        if len(df) < 50:
-            continue
-
+        if len(df) < 50: continue
         scanned += 1
 
-        # Technical Indicators (SMA50 & Diff)
-        close = float(df["Close"].iloc[-1])
-        sma50 = float(df["Close"].rolling(50).mean().iloc[-1])
+        # Technical Parameters
+        close = float(df["Close"].iloc[-1].item())
+        sma50 = float(df["Close"].rolling(50).mean().iloc[-1].item())
         diff = ((close - sma50) / sma50) * 100
+        w_high = float(df["Close"].max().item())
+        w_low = float(df["Close"].min().item())
 
-        # 52-Week Range & Stock YTD
-        week_52_high = float(df["Close"].max())
-        week_52_low = float(df["Close"].min())
-        
         current_year = datetime.now().year
         ytd_df = df[df.index >= f"{current_year}-01-01"]
-        if len(ytd_df) >= 2:
-            ytd_open = float(ytd_df["Close"].iloc[0])
-            stock_ytd = ((close - ytd_open) / ytd_open) * 100
-            stock_ytd_str = f"<span style='color: {'#188038' if stock_ytd >= 0 else '#d93025'}; font-weight: bold;'>{stock_ytd:+.2f}%</span>"
-        else:
-            stock_ytd_str = "N/A"
+        stock_ytd = ((close - float(ytd_df["Close"].iloc[0].item())) / float(ytd_df["Close"].iloc[0].item())) * 100 if len(ytd_df) >= 2 else 0.0
 
-        # Check SMA50 Exit
-        stock_info = (
-            f"<b>{symbol}</b><br>"
-            f"Close: ₹{close:.2f} | SMA50: ₹{sma50:.2f} | Diff: <span style='color: #d93025; font-weight: bold;'>{diff:.2f}%</span>"
-        )
+        # Technical Alerts Array
         if close < sma50:
-            exit_stocks.append((diff, stock_info))
+            color_y = '#188038' if stock_ytd >= 0 else '#d93025'
+            exit_stocks.append(f"<b>{symbol}</b><br>Close: ₹{close:.2f} | SMA50: ₹{sma50:.2f} | Diff: <span style='color: #d93025;'>{diff:.2f}%</span>")
 
-        # Fundamentals & Analyst Target
+        # Corporate / Financial Extraction
         info = ticker.info or {}
-        eps_ttm = info.get("trailingEps")
-        eps_str = f"₹{eps_ttm:.2f}" if eps_ttm is not None else "N/A"
+        eps_str = f"₹{info.get('trailingEps'):.2f}" if info.get('trailingEps') else "N/A"
+        target_str = f"₹{info.get('targetMeanPrice'):.2f}" if info.get('targetMeanPrice') else "N/A"
 
-        target_price = info.get("targetMeanPrice")
-        if target_price:
-            target_diff = ((target_price - close) / close) * 100
-            target_str = f"₹{target_price:.2f} ({target_diff:+.2f}%)"
-        else:
-            target_str = "N/A"
-
-        # Next Earnings Date
-        next_earnings_str = "N/A"
+        # Next Earnings
+        next_earn = "N/A"
         try:
             cal = ticker.calendar
             if cal is not None and not (isinstance(cal, pd.DataFrame) and cal.empty):
-                if isinstance(cal, dict):
-                    earnings_val = cal.get("Earnings Date")
-                    if earnings_val:
-                        if isinstance(earnings_val, list) and len(earnings_val) > 0:
-                            next_earnings_str = pd.to_datetime(earnings_val[0]).strftime('%Y-%m-%d')
-                        else:
-                            next_earnings_str = str(earnings_val)
+                if isinstance(cal, dict) and cal.get("Earnings Date"):
+                    next_earn = pd.to_datetime(cal.get("Earnings Date")[0]).strftime('%Y-%m-%d')
                 elif isinstance(cal, pd.DataFrame) and "Earnings Date" in cal.index:
-                    next_earnings_str = str(cal.loc["Earnings Date"].iloc[0])[:10]
-        except Exception:
-            pass
+                    next_earn = str(cal.loc["Earnings Date"].iloc[0])[:10]
+        except: pass
 
-        # Last 3 Quarters Beat/Miss History
-        quarter_beat_miss = []
+        # Quarter History
+        history_list = []
         try:
-            earn_hist = ticker.earnings_history
-            if earn_hist is not None and not earn_hist.empty:
-                recent_quarters = earn_hist.tail(3)
-                for idx, row in recent_quarters.iterrows():
-                    eps_act = row.get("epsActual")
-                    eps_est = row.get("epsEstimate")
-                    q_period = str(idx)[:10] if not isinstance(idx, int) else row.get("quarter", "Q")
+            hist = ticker.earnings_history
+            if hist is not None and not hist.empty:
+                for idx, row in hist.tail(3).iterrows():
+                    act, est = row.get("epsActual"), row.get("epsEstimate")
+                    if pd.notna(act) and pd.notna(est):
+                        history_list.append(f"{str(idx)[:7]}: {'✅' if act>=est else '❌'} ({act:.1f} vs {est:.1f})")
+        except: pass
+        q_history = " | ".join(history_list) if history_list else "No data"
 
-                    if pd.notna(eps_act) and pd.notna(eps_est):
-                        diff_val = eps_act - eps_est
-                        status = "✅ Beat" if diff_val >= 0 else "❌ Miss"
-                        quarter_beat_miss.append(f"{q_period}: {status} (Act: {eps_act:.2f} vs Est: {eps_est:.2f})")
-                    elif pd.notna(eps_act):
-                        quarter_beat_miss.append(f"{q_period}: Act: {eps_act:.2f}")
-        except Exception:
-            pass
+        # Structural Payload Dict (To avoid HTML injection formatting bugs)
+        fundamentals_data.append({
+            "sym": symbol, "close": close, "ytd": stock_ytd, "low": w_low, "high": w_high,
+            "eps": eps_str, "target": target_str, "earn": next_earn, "qhist": q_history
+        })
+    except Exception as e:
+        print(f"Skipping {symbol}: {e}")
 
-        quarters_summary = " | ".join(quarter_beat_miss) if quarter_beat_miss else "No consensus/history data"
+# =====================
+# 5. HTML BUILDER ENGINE
+# =====================
+def make_box(title, stats):
+    if not stats: return f"<div style='flex:1; border:1px solid #e0e0e0; padding:10px;'><b>{title}</b>: N/A</div>"
+    c_day = "#188038" if stats['day_change'] >= 0 else "#d93025"
+    c_ytd = "#188038" if stats['ytd'] >= 0 else "#d93025"
+    return f"""
+    <div style="flex:1; background:#fff; padding:10px 14px; border:1px solid #e0e0e0; border-radius:6px; min-width:160px; margin:4px;">
+        <div style="font-size:12px; color:#5f6368; font-weight:bold;">{title}</div>
+        <div style="font-size:18px; font-weight:bold; margin:2px 0;">{stats['close']:,.2f}</div>
+        <div style="font-size:11px;">
+            Day: <span style="color:{c_day}; font-weight:bold;">{stats['day_change']:+.2f}%</span> | 
+            YTD: <span style="color:{c_ytd}; font-weight:bold;">{stats['ytd']:+.2f}%</span>
+        </div>
+    </div>"""
 
-        # Corporate Actions
-        actions = ticker.actions.tail(2)
-        action_summary = "None"
-        if not actions.empty:
-            action_lines = []
-            for date, row in actions.iterrows():
-                date_str = date.strftime("%Y-%m-%d")
-                if row.get("Dividends", 0) > 0:
-                    action_lines.append(f"Div: ₹{row['Dividends']:.2f} ({date_str})")
-                if row.get("Stock Splits", 0) > 0:
-                    action_lines.append(f"Split: {row['Stock Splits']} ({date_str})")
-            if action_lines:
-                action_summary = ", ".join(action_lines)
+def make_fiidii_box(data):
+    if not data: return "<div style='flex:1; border:1px solid #e0e0e0; padding:10px;'>🏢 Inst. Data Offline</div>"
+    f_col = "#188038" if data['fii'] >= 0 else "#d93025"
+    d_col = "#188038" if data['dii'] >= 0 else "#d93025"
+    return f"""
+    <div style="flex:1; background:#fff; padding:10px 14px; border:1px solid #e0e0e0; border-radius:6px; min-width:160px; margin:4px;">
+        <div style="font-size:12px; color:#5f6368; font-weight:bold;">🏢 INSTITUTIONAL NET (Cr)</div>
+        <div style="font-size:13px; margin-top:4px;">FII Net: <span style="color:{f_col}; font-weight:bold;">{data['fii']:+.2f}</span></div>
+        <div style="font-size:13px; margin-top:2px;">DII Net: <span style="color:{d_col}; font-weight:bold;">{data['dii']:+.2f}</span></div>
+    </div>"""
 
-        # Quarterly Results (Revenue & PAT)
-        q_inc = ticker.quarterly_income_stmt
-        fin_summary = "N/A"
-        if not q_inc.empty:
-            latest_q_date = q_inc.columns[0].strftime("%b %Y")
-            rev = q_inc.loc["Total Revenue"].iloc[0] if "Total Revenue" in q_inc.index else None
-            pat = q_inc.loc["Net Income"].iloc[0] if "Net Income" in q_inc.index else None
+exit_box_content = "<br><hr style='border-top:1px dashed #ccc;'><br>".join(exit_stocks) if exit_stocks else "🎉 All watchlist stocks are trading ABOVE their 50-day SMA."
 
-            rev_str = f"₹{rev/1e7:.2f} Cr" if rev and pd.notna(rev) else "N/A"
-            pat_str = f"₹{pat/1e7:.2f} Cr" if pat and pd.notna(pat) else "N/A"
-            fin_summary = f"{latest_q_date} -> Rev: {rev_str}, PAT: {pat_str}"
+fund_cards = ""
+for stock in fundamentals_data:
+    col = "#188038" if stock['ytd'] >= 0 else "#d93025"
+    fund_cards += f"""
+    <div style="border-bottom:1px solid #e0e0e0; padding-bottom:10px; margin-bottom:10px;">
+        <div style="font-size:15px; font-weight:bold; color:#1a73e8;">{stock['sym']}</div>
+        <table style="width:100%; font-size:12px; line-height:1.5;">
+            <tr><td><b>Close:</b> ₹{stock['close']:.2f} (<span style="color:{col}; font-weight:bold;">{stock['ytd']:+.2f}% YTD</span>)</td><td><b>52W Range:</b> ₹{stock['low']:.2f} - ₹{stock['high']:.2f}</td></tr>
+            <tr><td><b>EPS (TTM):</b> {stock['eps']}</td><td><b>1Y Target:</b> {stock['target']}</td></tr>
+            <tr><td><b>Earnings Date:</b> {stock['earn']}</td><td><b>Last 3Q Beats:</b> {stock['qhist']}</td></tr>
+        </table>
+    </div>"""
 
-        # ---------------------------------------------
-        # HTML CARD GENERATION (Using clean f-string)
-        # ---------------------------------------------
-        card_html = f"""
-        <div style="border-bottom: 1px solid #e0e0e0; padding-bottom: 12px; margin-bottom: 12px;">
+html_body = f"""
+<!DOCTYPE html><html><body style="font-family:Arial,sans-serif; color:#202124; max-width:650px; margin:auto; padding:10px;">
+    <div style="background:#f8f9fa; border:1px solid #dadce0; padding:12px; border-radius:8px; margin-bottom:15px;">
+        <h2 style="margin:0; color:#1a73e8; font-size:18px;">📊 Portfolio Market Intelligence Dashboard</h2>
+        <div style="font-size:12px; color:#5f6368;"><b>Date:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Scanned {scanned} tickers</div>
+    </div>
+    <div style="border:1px solid #dadce0; padding:12px; border-radius:8px; margin-bottom:15px;">
+        <h3 style="color:#d93025; margin:0 0 6px 0; font-size:14px;">🚨 SMA50 ALERTS</h3>
+        <div style="font-size:13px;">{exit_box_content}</div>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; margin-bottom:15px;">
+        {make_box("🇮🇳 NIFTY 50", nifty)}
+        {make_box("🏛️ SENSEX", sensex)}
+        {make_fiidii_box(fiidii)}
+    </div>
+    <div style="border:1px solid #dadce0; padding:12px; border-radius:8px; background:#fff;">
+        <h3 style="margin:0 0 8px 0; color:#202124; border-bottom:2px solid #1a73e8; padding-bottom:4px; font-size:14px;">📈 Fundamentals Deep Dive</h3>
+        {fund_cards if fund_cards else '<p>No data retrieved.</p>'}
+    </div>
+</body></html>"""
+
+# =====================
+# 6. EMAIL TRANSMISSION
+# =====================
+msg = MIMEText(html_body, "html")
+msg["Subject"] = f"Market Scan Dashboard - {datetime.now().strftime('%Y-%m-%d')}"
+msg["From"], msg["To"] = EMAIL_ADDRESS, EMAIL_ADDRESS
+
+try:
+    with smtplib.SMTP_SSL("://gmail.com", 465) as server:
+        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        server.send_message(msg)
