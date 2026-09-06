@@ -6,6 +6,7 @@ from email.mime.text import MIMEText
 import pandas as pd
 import pandas_market_calendars as mcal
 import yfinance as yf
+from nsepython import nse_fiidii  # Added for FII/DII data tracking
 
 # =====================
 # 1. MARKET HOLIDAY CHECK
@@ -41,7 +42,7 @@ with open("watchlist.txt", "r") as f:
     WATCHLIST = [line.strip() for line in f if line.strip()]
 
 # =====================
-# 4. HELPER: INDEX METRICS
+# 4. HELPER: INDEX METRICS & FII/DII
 # =====================
 def get_index_metrics(ticker_symbol):
     """Fetches today's close, daily change %, and YTD return for a market index."""
@@ -66,8 +67,57 @@ def get_index_metrics(ticker_symbol):
         print(f"Error fetching metrics for {ticker_symbol}: {e}")
     return None
 
+def get_daily_fii_dii_html():
+    """Fetches provisional daily FII/DII activities and formats them as HTML."""
+    try:
+        raw_data = nse_fiidii()
+        df = pd.DataFrame(raw_data)
+        
+        # Clean up column names for readability
+        df.columns = ['Category', 'Date', 'Buy', 'Sell', 'Net']
+        
+        fii_net = 0.0
+        dii_net = 0.0
+        
+        # Extract net values to assign indicators
+        for _, row in df.iterrows():
+            category = str(row['Category']).upper()
+            try:
+                net_val = float(row['Net'])
+            except:
+                net_val = 0.0
+                
+            if 'FII' in category:
+                fii_net = net_val
+            elif 'DII' in category:
+                dii_net = net_val
+
+        fii_color = "#188038" if fii_net >= 0 else "#d93025"
+        dii_color = "#188038" if dii_net >= 0 else "#d93025"
+
+        return f"""
+        <div style="flex: 1; background: #ffffff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e0e0e0;">
+            <div style="font-size: 13px; color: #5f6368; font-weight: bold;">🏢 INSTITUTIONAL ACTIVITY (Cr)</div>
+            <div style="font-size: 14px; margin-top: 4px; border-bottom: 1px solid #f1f3f4; padding-bottom: 4px;">
+                <b>FII Net:</b> <span style="color: {fii_color}; font-weight: bold;">{fii_net:+.2f}</span>
+            </div>
+            <div style="font-size: 14px; margin-top: 4px;">
+                <b>DII Net:</b> <span style="color: {dii_color}; font-weight: bold;">{dii_net:+.2f}</span>
+            </div>
+        </div>
+        """
+    except Exception as e:
+        print(f"Error fetching FII/DII details: {e}")
+        return """
+        <div style="flex: 1; background: #ffffff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e0e0e0;">
+            <div style="font-size: 13px; color: #5f6368; font-weight: bold;">🏢 INSTITUTIONAL ACTIVITY</div>
+            <div style="font-size: 14px; margin-top: 4px; color: #d93025;">Unavailable today</div>
+        </div>
+        """
+
 nifty_stats = get_index_metrics("^NSEI")
 sensex_stats = get_index_metrics("^BSESN")
+fii_dii_html_box = get_daily_fii_dii_html()
 
 # =====================
 # 5. SCAN & PROCESS STOCKS
@@ -193,114 +243,3 @@ for symbol in WATCHLIST:
         fundamentals_data.append(f"""
         <div style="border-bottom: 1px solid #e0e0e0; padding-bottom: 12px; margin-bottom: 12px;">
             <div style="font-size: 16px; font-weight: bold; color: #1a73e8; margin-bottom: 4px;">{symbol}</div>
-            <table style="width: 100%; font-size: 13px; line-height: 1.6; border-collapse: collapse;">
-                <tr>
-                    <td style="width: 50%;"><b>Close:</b> ₹{close:.2f} | <b>YTD:</b> {stock_ytd_str}</td>
-                    <td style="width: 50%;"><b>52W Range:</b> ₹{week_52_low:.2f} – ₹{week_52_high:.2f}</td>
-                </tr>
-                <tr>
-                    <td><b>EPS (TTM):</b> {eps_str}</td>
-                    <td><b>1Y Target:</b> {target_str}</td>
-                </tr>
-                <tr>
-                    <td><b>Next Earnings Date:</b> {next_earnings_str}</td>
-                    <td><b>Corporate Actions:</b> {action_summary}</td>
-                </tr>
-                <tr>
-                    <td colspan="2"><b>Quarterly Results:</b> {fin_summary}</td>
-                </tr>
-                <tr>
-                    <td colspan="2"><b>Last 3Q Beat/Miss:</b> <span style="font-size: 12px;">{quarters_summary}</span></td>
-                </tr>
-            </table>
-        </div>
-        """)
-
-    except Exception as e:
-        print(f"Error processing {symbol}: {e}")
-
-exit_stocks.sort(key=lambda x: x[0])
-
-# =====================
-# 6. FORMAT BENCHMARKS
-# =====================
-def format_index_cell(name, stats):
-    if not stats:
-        return f"<div><b>{name}:</b> N/A</div>"
-    day_color = "#188038" if stats['day_change'] >= 0 else "#d93025"
-    ytd_color = "#188038" if stats['ytd'] >= 0 else "#d93025"
-    return f"""
-    <div style="flex: 1; background: #ffffff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e0e0e0; margin-right: 8px;">
-        <div style="font-size: 13px; color: #5f6368; font-weight: bold;">{name}</div>
-        <div style="font-size: 18px; font-weight: bold; margin: 2px 0;">{stats['close']:,.2f}</div>
-        <div style="font-size: 12px;">
-            Day: <span style="color: {day_color}; font-weight: bold;">{stats['day_change']:+.2f}%</span> | 
-            YTD: <span style="color: {ytd_color}; font-weight: bold;">{stats['ytd']:+.2f}%</span>
-        </div>
-    </div>
-    """
-
-nifty_html_box = format_index_cell("🇮🇳 NIFTY 50", nifty_stats)
-sensex_html_box = format_index_cell("🏛️ SENSEX", sensex_stats)
-
-# =====================
-# 7. BUILD HTML EMAIL
-# =====================
-if exit_stocks:
-    exit_list_html = "<br><hr style='border-top: 1px dashed #ccc;'><br>".join([item[1] for item in exit_stocks])
-    exits_content = f"<h3 style='color: #d93025; margin-bottom: 8px;'>🚨 EXITS (Below SMA50)</h3><div>{exit_list_html}</div>"
-else:
-    exits_content = "<p style='color: #188038; font-weight: bold;'>🎉 All watchlist stocks are trading ABOVE their 50-day SMA.</p>"
-
-fundamentals_html = "".join(fundamentals_data)
-
-html_body = f"""
-<!DOCTYPE html>
-<html>
-<body style="font-family: Arial, sans-serif; line-height: 1.5; color: #202124; max-width: 680px; margin: auto; padding: 10px;">
-    
-    <!-- HEADER -->
-    <div style="background-color: #f8f9fa; border: 1px solid #dadce0; padding: 14px; border-radius: 8px; margin-bottom: 20px;">
-        <h2 style="margin: 0 0 6px 0; color: #1a73e8; font-size: 20px;">📈 Daily Portfolio & Market Intelligence</h2>
-        <div style="font-size: 13px; color: #5f6368;"><b>Date:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | <b>Scanned:</b> {scanned} stocks</div>
-    </div>
-
-    <!-- TECHNICAL ALERTS (SMA50) -->
-    <div style="background-color: #ffffff; border: 1px solid #dadce0; padding: 14px; border-radius: 8px; margin-bottom: 20px;">
-        {exits_content}
-    </div>
-
-    <!-- BENCHMARK INDEX SECTION -->
-    <div style="margin-bottom: 20px;">
-        <div style="display: flex; justify-content: space-between;">
-            {nifty_html_box}
-            {sensex_html_box}
-        </div>
-    </div>
-
-    <!-- FUNDAMENTALS, EPS & EARNINGS -->
-    <div style="background-color: #ffffff; border: 1px solid #dadce0; padding: 14px; border-radius: 8px;">
-        <h3 style="margin-top: 0; color: #202124; border-bottom: 2px solid #1a73e8; padding-bottom: 6px;">📊 Fundamentals & Earnings Outlook</h3>
-        {fundamentals_html if fundamentals_html else '<p>No data retrieved.</p>'}
-    </div>
-
-</body>
-</html>
-"""
-
-# =====================
-# 8. SEND EMAIL
-# =====================
-subject = f"Market Alert: SMA50, Benchmarks & Earnings - {datetime.now().strftime('%Y-%m-%d')}"
-email = MIMEText(html_body, "html")
-email["Subject"] = subject
-email["From"] = EMAIL_ADDRESS
-email["To"] = EMAIL_ADDRESS
-
-try:
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-        server.send_message(email)
-    print("Market intelligence email sent successfully!")
-except Exception as e:
-    print(f"Failed to send email: {e}")
