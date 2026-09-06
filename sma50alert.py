@@ -207,32 +207,19 @@ html_body = f"""
 </body></html>"""
 
 # =====================
-
 # 6. EMAIL TRANSMISSION
-
 # =====================
-
 msg = MIMEText(html_body, "html")
-
 msg["Subject"] = f"Market Scan Dashboard - {datetime.now().strftime('%Y-%m-%d')}"
-
 msg["From"] = EMAIL_ADDRESS
-
 msg["To"] = EMAIL_ADDRESS 
 
 try:
-
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-
-    server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-
-    server.send_message(msg) 
-
+        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)  # 👈 Indented inside 'with'
+        server.send_message(msg)                      # 👈 Indented inside 'with'
     print("Email sent successfully.") 
-
 except Exception as e:
-
-print(f"Email send failed: {e}")
-
-sys.exit(1)
+    print(f"Email send failed: {e}")                 # 👈 Indented inside 'except'
+    sys.exit(1)                                       # 👈 Indented inside 'except'
 
