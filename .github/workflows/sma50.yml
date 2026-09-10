@@ -2,7 +2,7 @@ name: SMA50 & Fundamentals Alert
 
 on:
   schedule:
-    - cron: "45 11 * * 1-5" # 5:15 PM IST on weekdays
+    - cron: "45 14 * * 1-5" # 5:15 PM IST on weekdays
   workflow_dispatch:
 
 jobs:
