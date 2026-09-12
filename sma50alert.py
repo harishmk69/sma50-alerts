@@ -1,12 +1,12 @@
 import os
 import sys
 import smtplib
+import requests
 from datetime import datetime
 from email.mime.text import MIMEText
 import pandas as pd
 import pandas_market_calendars as mcal
 import yfinance as yf
-from nsepython import nse_fiidii
 
 # =====================
 # 1. MARKET HOLIDAY CHECK
@@ -55,46 +55,38 @@ def get_index_metrics(ticker_symbol):
         print(f"Index error {ticker_symbol}: {e}")
     return None
 
-import requests
-
 def get_fii_dii_metrics():
     try:
-        # Use an alternate public API mirror immune to data center blocking
-        url = "https://stockedge.com"
+        # URL updated to Mr. Chartist's dedicated open JSON data api endpoint
+        url = "https://mrchartist.com"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "application/json"
         }
-        
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code != 200:
-            print(f"⚠️ Mirror API returned status code {response.status_code}")
             return None
-            
         data = response.json()
         if not data:
             return None
-            
-        # Grab the most recent entry from the historical list
-        latest_record = data[0]
         
-        # Extract net cash market positions directly
-        fii_net = float(latest_record.get("fiiNet", 0.0))
-        dii_net = float(latest_record.get("diiNet", 0.0))
-        
-        print(f"📊 Extracted Institutional Activity -> FII: {fii_net:+.2f} Cr | DII: {dii_net:+.2f} Cr")
+        fii_net, dii_net = 0.0, 0.0
+        if isinstance(data, dict):
+            if "cash" in data:
+                fii_net = float(data["cash"].get("fii_net", 0.0))
+                dii_net = float(data["cash"].get("dii_net", 0.0))
+            else:
+                fii_net = float(data.get("fii_net", data.get("fiiNet", 0.0)))
+                dii_net = float(data.get("dii_net", data.get("diiNet", 0.0)))
         return {"fii": fii_net, "dii": dii_net}
-        
     except Exception as e:
-        print(f"⚠️ Failed to bypass FII/DII block via mirror: {e}")
+        print(f"⚠️ Failed to get FII/DII data: {e}")
         return None
-
 
 # Fetch global data blocks
 nifty = get_index_metrics("^NSEI")
 sensex = get_index_metrics("^BSESN")
 fiidii = get_fii_dii_metrics()
-
 # =====================
 # 4. PORTFOLIO SCANNER LOOP
 # =====================
@@ -109,7 +101,6 @@ for symbol in WATCHLIST:
         if len(df) < 50: continue
         scanned += 1
 
-        # Technical Parameters
         close = float(df["Close"].iloc[-1].item())
         sma50 = float(df["Close"].rolling(50).mean().iloc[-1].item())
         diff = ((close - sma50) / sma50) * 100
@@ -120,17 +111,13 @@ for symbol in WATCHLIST:
         ytd_df = df[df.index >= f"{current_year}-01-01"]
         stock_ytd = ((close - float(ytd_df["Close"].iloc[0].item())) / float(ytd_df["Close"].iloc[0].item())) * 100 if len(ytd_df) >= 2 else 0.0
 
-        # Technical Alerts Array
         if close < sma50:
-            color_y = '#188038' if stock_ytd >= 0 else '#d93025'
             exit_stocks.append(f"<b>{symbol}</b><br>Close: ₹{close:.2f} | SMA50: ₹{sma50:.2f} | Diff: <span style='color: #d93025;'>{diff:.2f}%</span>")
 
-        # Corporate / Financial Extraction
         info = ticker.info or {}
         eps_str = f"₹{info.get('trailingEps'):.2f}" if info.get('trailingEps') else "N/A"
         target_str = f"₹{info.get('targetMeanPrice'):.2f}" if info.get('targetMeanPrice') else "N/A"
 
-        # Next Earnings
         next_earn = "N/A"
         try:
             cal = ticker.calendar
@@ -141,7 +128,6 @@ for symbol in WATCHLIST:
                     next_earn = str(cal.loc["Earnings Date"].iloc[0])[:10]
         except: pass
 
-        # Quarter History
         history_list = []
         try:
             hist = ticker.earnings_history
@@ -153,7 +139,6 @@ for symbol in WATCHLIST:
         except: pass
         q_history = " | ".join(history_list) if history_list else "No data"
 
-        # Structural Payload Dict (To avoid HTML injection formatting bugs)
         fundamentals_data.append({
             "sym": symbol, "close": close, "ytd": stock_ytd, "low": w_low, "high": w_high,
             "eps": eps_str, "target": target_str, "earn": next_earn, "qhist": q_history
@@ -173,13 +158,12 @@ def make_box(title, stats):
         <div style="font-size:12px; color:#5f6368; font-weight:bold;">{title}</div>
         <div style="font-size:18px; font-weight:bold; margin:2px 0;">{stats['close']:,.2f}</div>
         <div style="font-size:11px;">
-            Day: <span style="color:{c_day}; font-weight:bold;">{stats['day_change']:+.2f}%</span> | 
-            YTD: <span style="color:{c_ytd}; font-weight:bold;">{stats['ytd']:+.2f}%</span>
+            Day: <span style="color:{c_day}; font-weight:bold;">{stats['day_change']:+.2f}%</span> | YTD: <span style="color:{c_ytd}; font-weight:bold;">{stats['ytd']:+.2f}%</span>
         </div>
     </div>"""
 
 def make_fiidii_box(data):
-    if not data: return "<div style='flex:1; border:1px solid #e0e0e0; padding:10px;'>🏢 Inst. Data Offline</div>"
+    if not data: return "<div style='flex:1; border:1px solid #e0e0e0; padding:10px; background:#fff; border-radius:6px; margin:4px;'>🏢 Inst. Data Offline</div>"
     f_col = "#188038" if data['fii'] >= 0 else "#d93025"
     d_col = "#188038" if data['dii'] >= 0 else "#d93025"
     return f"""
@@ -234,11 +218,10 @@ msg["From"] = EMAIL_ADDRESS
 msg["To"] = EMAIL_ADDRESS 
 
 try:
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)  # 👈 Indented inside 'with'
-        server.send_message(msg)                      # 👈 Indented inside 'with'
+    with smtplib.SMTP_SSL("://gmail.com", 465) as server:
+        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        server.send_message(msg)
     print("Email sent successfully.") 
 except Exception as e:
-    print(f"Email send failed: {e}")                 # 👈 Indented inside 'except'
-    sys.exit(1)                                       # 👈 Indented inside 'except'
-
+    print(f"Email send failed: {e}")
+    sys.exit(1)
