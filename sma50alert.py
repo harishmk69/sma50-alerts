@@ -12,7 +12,7 @@ import yfinance as yf
 # 1. MARKET HOLIDAY CHECK
 # =====================
 def is_nse_market_open_today():
-    return True
+    #return True
     try:
         nse = mcal.get_calendar("NSE")
         today_str = datetime.now().strftime("%Y-%m-%d")
