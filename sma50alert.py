@@ -58,7 +58,6 @@ def get_index_metrics(ticker_symbol):
 
 def get_fii_dii_metrics():
     try:
-        # URL updated to Mr. Chartist's dedicated open JSON data api endpoint
         url = "https://mrchartist.com"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -67,6 +66,12 @@ def get_fii_dii_metrics():
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code != 200:
             return None
+        
+        # Verify content type is actually json before decoding
+        if "application/json" not in response.headers.get("Content-Type", ""):
+            print("⚠️ FII/DII API endpoint returned non-JSON text. Falling back to offline.")
+            return None
+            
         data = response.json()
         if not data:
             return None
