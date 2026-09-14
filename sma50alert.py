@@ -224,10 +224,12 @@ msg["From"] = EMAIL_ADDRESS
 msg["To"] = EMAIL_ADDRESS 
 
 try:
-    with smtplib.SMTP_SSL("://gmail.com", 465) as server:
+    # Changed from "://gmail.com" to "smtp.gmail.com"
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         server.send_message(msg)
     print("Email sent successfully.") 
 except Exception as e:
     print(f"Email send failed: {e}")
     sys.exit(1)
+
