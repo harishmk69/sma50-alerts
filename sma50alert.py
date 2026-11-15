@@ -57,37 +57,44 @@ def get_index_metrics(ticker_symbol):
     return None
 
 def get_fii_dii_metrics():
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/html;q=0.9"
+    }
+
+    # Source 1: Mr. Chartist FII/DII Tracker JSON API
     try:
         url = "https://mrchartist.com"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json"
-        }
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code != 200:
-            return None
-        
-        # Verify content type is actually json before decoding
-        if "application/json" not in response.headers.get("Content-Type", ""):
-            print("⚠️ FII/DII API endpoint returned non-JSON text. Falling back to offline.")
-            return None
-            
-        data = response.json()
-        if not data:
-            return None
-        
-        fii_net, dii_net = 0.0, 0.0
-        if isinstance(data, dict):
-            if "cash" in data:
-                fii_net = float(data["cash"].get("fii_net", 0.0))
-                dii_net = float(data["cash"].get("dii_net", 0.0))
-            else:
-                fii_net = float(data.get("fii_net", data.get("fiiNet", 0.0)))
-                dii_net = float(data.get("dii_net", data.get("diiNet", 0.0)))
-        return {"fii": fii_net, "dii": dii_net}
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200 and "application/json" in res.headers.get("Content-Type", ""):
+            data = res.json()
+            # Safely check nested or flat keys
+            target = data.get("latest", data) if isinstance(data, dict) else {}
+            if isinstance(target, dict):
+                fii = target.get("fii_net") or target.get("fiiNet") or (target.get("fii", {}) or {}).get("net")
+                dii = target.get("dii_net") or target.get("diiNet") or (target.get("dii", {}) or {}).get("net")
+                if fii is not None and dii is not None:
+                    return {"fii": float(fii), "dii": float(dii)}
     except Exception as e:
-        print(f"⚠️ Failed to get FII/DII data: {e}")
-        return None
+        print(f"Mr. Chartist API skipped: {e}")
+
+    # Source 2: Trendlyne Cash Provisional Page (HTML Fallback)
+    try:
+        tl_url = "https://trendlyne.com/macro-data/fii-dii/latest/cash-pastmonth/"
+        res = requests.get(tl_url, headers=headers, timeout=12)
+        if res.status_code == 200:
+            html = res.text
+            fii_match = re.search(r"FII were net (?:buyers|sellers) of ₹([-\d,.]+) Cr", html)
+            dii_match = re.search(r"DII were net (?:buyers|sellers) of ₹([-\d,.]+) Cr", html)
+            if fii_match and dii_match:
+                fii_val = float(fii_match.group(1).replace(",", ""))
+                dii_val = float(dii_match.group(1).replace(",", ""))
+                return {"fii": fii_val, "dii": dii_val}
+    except Exception as e:
+        print(f"⚠️ Trendlyne FII/DII fallback failed: {e}")
+
+    return None
+
 
 # Fetch global data blocks
 nifty = get_index_metrics("^NSEI")
