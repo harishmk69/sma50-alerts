@@ -1,30 +1,37 @@
 import os
+import re
 import sys
 import smtplib
 import requests
-from datetime import datetime
 from email.mime.text import MIMEText
 import pandas as pd
 import pandas_market_calendars as mcal
 import yfinance as yf
 
+
+def get_ist_now():
+    return pd.Timestamp.now(tz="Asia/Kolkata")
+
+
 # =====================
 # 1. MARKET HOLIDAY CHECK
 # =====================
 def is_nse_market_open_today():
-    #return True
+    now_ist = get_ist_now()
     try:
         nse = mcal.get_calendar("NSE")
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = now_ist.strftime("%Y-%m-%d")
         schedule = nse.schedule(start_date=today_str, end_date=today_str)
         return not schedule.empty
     except Exception as e:
         print(f"Warning checking calendar: {e}")
-        return datetime.now().weekday() < 5
+        return now_ist.weekday() < 5
+
 
 if not is_nse_market_open_today():
-    print(f"⏸️ NSE Market closed today ({datetime.now().strftime('%Y-%m-%d')}). Exiting.")
+    print(f"NSE Market closed today ({get_ist_now().strftime('%Y-%m-%d')}). Exiting.")
     sys.exit(0)
+
 
 # =====================
 # 2. CONFIGURATION & WATCHLIST
@@ -35,12 +42,13 @@ EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 with open("watchlist.txt", "r") as f:
     WATCHLIST = [line.strip() for line in f if line.strip()]
 
+
 # =====================
 # 3. METRICS PULLERS
 # =====================
 def get_index_metrics(ticker_symbol):
     try:
-        current_year = datetime.now().year
+        current_year = get_ist_now().year
         start_date = f"{current_year}-01-01"
         data = yf.download(ticker_symbol, start=start_date, auto_adjust=True, progress=False)
         if len(data) >= 2:
@@ -50,29 +58,41 @@ def get_index_metrics(ticker_symbol):
             return {
                 "close": last_close,
                 "day_change": ((last_close - prev_close) / prev_close) * 100,
-                "ytd": ((last_close - first_close) / first_close) * 100
+                "ytd": ((last_close - first_close) / first_close) * 100,
             }
     except Exception as e:
         print(f"Index error {ticker_symbol}: {e}")
     return None
 
+
 def get_fii_dii_metrics():
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/html;q=0.9"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/html;q=0.9",
     }
 
     # Source 1: Mr. Chartist FII/DII Tracker JSON API
     try:
-        url = "https://mrchartist.com"
+        url = "https://fii-diidata.mrchartist.com/api/data"
         res = requests.get(url, headers=headers, timeout=10)
         if res.status_code == 200 and "application/json" in res.headers.get("Content-Type", ""):
             data = res.json()
-            # Safely check nested or flat keys
             target = data.get("latest", data) if isinstance(data, dict) else {}
             if isinstance(target, dict):
-                fii = target.get("fii_net") or target.get("fiiNet") or (target.get("fii", {}) or {}).get("net")
-                dii = target.get("dii_net") or target.get("diiNet") or (target.get("dii", {}) or {}).get("net")
+                fii = (
+                    target.get("fii_net")
+                    or target.get("fiiNet")
+                    or (target.get("fii", {}) or {}).get("net")
+                )
+                dii = (
+                    target.get("dii_net")
+                    or target.get("diiNet")
+                    or (target.get("dii", {}) or {}).get("net")
+                )
                 if fii is not None and dii is not None:
                     return {"fii": float(fii), "dii": float(dii)}
     except Exception as e:
@@ -91,55 +111,78 @@ def get_fii_dii_metrics():
                 dii_val = float(dii_match.group(1).replace(",", ""))
                 return {"fii": fii_val, "dii": dii_val}
     except Exception as e:
-        print(f"⚠️ Trendlyne FII/DII fallback failed: {e}")
+        print(f"Trendlyne FII/DII fallback failed: {e}")
 
     return None
 
 
-# Fetch global data blocks
 nifty = get_index_metrics("^NSEI")
 sensex = get_index_metrics("^BSESN")
 fiidii = get_fii_dii_metrics()
+
+
 # =====================
 # 4. PORTFOLIO SCANNER LOOP
 # =====================
 exit_stocks = []
 fundamentals_data = []
 scanned = 0
+current_year = get_ist_now().year
 
 for symbol in WATCHLIST:
     try:
         ticker = yf.Ticker(symbol)
-        df = ticker.history(period="1y", interval="1d", auto_adjust=True)
-        if len(df) < 50: continue
+        # Fetch 2y of daily data so 50-week EMA has enough periods to stabilize
+        df = ticker.history(period="2y", interval="1d", auto_adjust=True)
+        if len(df) < 50:
+            continue
         scanned += 1
 
         close = float(df["Close"].iloc[-1].item())
         sma50 = float(df["Close"].rolling(50).mean().iloc[-1].item())
         diff = ((close - sma50) / sma50) * 100
-        w_high = float(df["Close"].max().item())
-        w_low = float(df["Close"].min().item())
 
-        current_year = datetime.now().year
-        ytd_df = df[df.index >= f"{current_year}-01-01"]
-        stock_ytd = ((close - float(ytd_df["Close"].iloc[0].item())) / float(ytd_df["Close"].iloc[0].item())) * 100 if len(ytd_df) >= 2 else 0.0
+        # Slice last ~252 trading days for accurate 52-Week High/Low
+        df_1y = df.tail(252)
+        w_high = float(df_1y["Close"].max().item())
+        w_low = float(df_1y["Close"].min().item())
+
+        # Weekly 20 EMA & 50 EMA (resampled to Friday weekly close)
+        weekly_close = df["Close"].resample("W-FRI").last().dropna()
+        ema20_w = float(weekly_close.ewm(span=20, adjust=False).mean().iloc[-1].item())
+        ema50_w = float(weekly_close.ewm(span=50, adjust=False).mean().iloc[-1].item())
+
+        # YTD Performance
+        ytd_df = df[df.index.year == current_year]
+        if len(ytd_df) >= 2:
+            first_ytd_close = float(ytd_df["Close"].iloc[0].item())
+            stock_ytd = ((close - first_ytd_close) / first_ytd_close) * 100
+        else:
+            stock_ytd = 0.0
 
         if close < sma50:
-            exit_stocks.append(f"<b>{symbol}</b><br>Close: ₹{close:.2f} | SMA50: ₹{sma50:.2f} | Diff: <span style='color: #d93025;'>{diff:.2f}%</span>")
+            exit_stocks.append(
+                f"<b>{symbol}</b><br>"
+                f"Close: ₹{close:.2f} | SMA50: ₹{sma50:.2f} | "
+                f"Diff: <span style='color: #d93025;'>{diff:.2f}%</span>"
+            )
 
         info = ticker.info or {}
-        eps_str = f"₹{info.get('trailingEps'):.2f}" if info.get('trailingEps') else "N/A"
-        target_str = f"₹{info.get('targetMeanPrice'):.2f}" if info.get('targetMeanPrice') else "N/A"
+        eps_str = f"₹{info.get('trailingEps'):.2f}" if info.get("trailingEps") else "N/A"
+        target_str = (
+            f"₹{info.get('targetMeanPrice'):.2f}" if info.get("targetMeanPrice") else "N/A"
+        )
 
         next_earn = "N/A"
         try:
             cal = ticker.calendar
             if cal is not None and not (isinstance(cal, pd.DataFrame) and cal.empty):
                 if isinstance(cal, dict) and cal.get("Earnings Date"):
-                    next_earn = pd.to_datetime(cal.get("Earnings Date")[0]).strftime('%Y-%m-%d')
+                    next_earn = pd.to_datetime(cal.get("Earnings Date")[0]).strftime("%Y-%m-%d")
                 elif isinstance(cal, pd.DataFrame) and "Earnings Date" in cal.index:
                     next_earn = str(cal.loc["Earnings Date"].iloc[0])[:10]
-        except: pass
+        except Exception:
+            pass
 
         history_list = []
         try:
@@ -148,24 +191,39 @@ for symbol in WATCHLIST:
                 for idx, row in hist.tail(3).iterrows():
                     act, est = row.get("epsActual"), row.get("epsEstimate")
                     if pd.notna(act) and pd.notna(est):
-                        history_list.append(f"{str(idx)[:7]}: {'✅' if act>=est else '❌'} ({act:.1f} vs {est:.1f})")
-        except: pass
+                        status_icon = "✅" if act >= est else "❌"
+                        history_list.append(f"{str(idx)[:7]}: {status_icon} ({act:.1f} vs {est:.1f})")
+        except Exception:
+            pass
         q_history = " | ".join(history_list) if history_list else "No data"
 
-        fundamentals_data.append({
-            "sym": symbol, "close": close, "ytd": stock_ytd, "low": w_low, "high": w_high,
-            "eps": eps_str, "target": target_str, "earn": next_earn, "qhist": q_history
-        })
+        fundamentals_data.append(
+            {
+                "sym": symbol,
+                "close": close,
+                "ytd": stock_ytd,
+                "low": w_low,
+                "high": w_high,
+                "ema20_w": ema20_w,
+                "ema50_w": ema50_w,
+                "eps": eps_str,
+                "target": target_str,
+                "earn": next_earn,
+                "qhist": q_history,
+            }
+        )
     except Exception as e:
         print(f"Skipping {symbol}: {e}")
+
 
 # =====================
 # 5. HTML BUILDER ENGINE
 # =====================
 def make_box(title, stats):
-    if not stats: return f"<div style='flex:1; border:1px solid #e0e0e0; padding:10px;'><b>{title}</b>: N/A</div>"
-    c_day = "#188038" if stats['day_change'] >= 0 else "#d93025"
-    c_ytd = "#188038" if stats['ytd'] >= 0 else "#d93025"
+    if not stats:
+        return f"<div style='flex:1; border:1px solid #e0e0e0; padding:10px;'><b>{title}</b>: N/A</div>"
+    c_day = "#188038" if stats["day_change"] >= 0 else "#d93025"
+    c_ytd = "#188038" if stats["ytd"] >= 0 else "#d93025"
     return f"""
     <div style="flex:1; background:#fff; padding:10px 14px; border:1px solid #e0e0e0; border-radius:6px; min-width:160px; margin:4px;">
         <div style="font-size:12px; color:#5f6368; font-weight:bold;">{title}</div>
@@ -175,10 +233,12 @@ def make_box(title, stats):
         </div>
     </div>"""
 
+
 def make_fiidii_box(data):
-    if not data: return "<div style='flex:1; border:1px solid #e0e0e0; padding:10px; background:#fff; border-radius:6px; margin:4px;'>🏢 Inst. Data Offline</div>"
-    f_col = "#188038" if data['fii'] >= 0 else "#d93025"
-    d_col = "#188038" if data['dii'] >= 0 else "#d93025"
+    if not data:
+        return "<div style='flex:1; border:1px solid #e0e0e0; padding:10px; background:#fff; border-radius:6px; margin:4px;'>🏢 Inst. Data Offline</div>"
+    f_col = "#188038" if data["fii"] >= 0 else "#d93025"
+    d_col = "#188038" if data["dii"] >= 0 else "#d93025"
     return f"""
     <div style="flex:1; background:#fff; padding:10px 14px; border:1px solid #e0e0e0; border-radius:6px; min-width:160px; margin:4px;">
         <div style="font-size:12px; color:#5f6368; font-weight:bold;">🏢 INSTITUTIONAL NET (Cr)</div>
@@ -186,26 +246,49 @@ def make_fiidii_box(data):
         <div style="font-size:13px; margin-top:2px;">DII Net: <span style="color:{d_col}; font-weight:bold;">{data['dii']:+.2f}</span></div>
     </div>"""
 
-exit_box_content = "<br><hr style='border-top:1px dashed #ccc;'><br>".join(exit_stocks) if exit_stocks else "🎉 All watchlist stocks are trading ABOVE their 50-day SMA."
+
+exit_box_content = (
+    "<br><hr style='border-top:1px dashed #ccc;'><br>".join(exit_stocks)
+    if exit_stocks
+    else "🎉 All watchlist stocks are trading ABOVE their 50-day SMA."
+)
 
 fund_cards = ""
 for stock in fundamentals_data:
-    col = "#188038" if stock['ytd'] >= 0 else "#d93025"
+    col = "#188038" if stock["ytd"] >= 0 else "#d93025"
+    c_ema20 = "#188038" if stock["close"] >= stock["ema20_w"] else "#d93025"
+    c_ema50 = "#188038" if stock["close"] >= stock["ema50_w"] else "#d93025"
     fund_cards += f"""
     <div style="border-bottom:1px solid #e0e0e0; padding-bottom:10px; margin-bottom:10px;">
         <div style="font-size:15px; font-weight:bold; color:#1a73e8;">{stock['sym']}</div>
         <table style="width:100%; font-size:12px; line-height:1.5;">
-            <tr><td><b>Close:</b> ₹{stock['close']:.2f} (<span style="color:{col}; font-weight:bold;">{stock['ytd']:+.2f}% YTD</span>)</td><td><b>52W Range:</b> ₹{stock['low']:.2f} - ₹{stock['high']:.2f}</td></tr>
-            <tr><td><b>EPS (TTM):</b> {stock['eps']}</td><td><b>1Y Target:</b> {stock['target']}</td></tr>
-            <tr><td><b>Earnings Date:</b> {stock['earn']}</td><td><b>Last 3Q Beats:</b> {stock['qhist']}</td></tr>
+            <tr>
+                <td><b>Close:</b> ₹{stock['close']:.2f} (<span style="color:{col}; font-weight:bold;">{stock['ytd']:+.2f}% YTD</span>)</td>
+                <td><b>52W Range:</b> ₹{stock['low']:.2f} - ₹{stock['high']:.2f}</td>
+            </tr>
+            <tr>
+                <td><b>20W EMA:</b> <span style="color:{c_ema20}; font-weight:bold;">₹{stock['ema20_w']:.2f}</span></td>
+                <td><b>50W EMA:</b> <span style="color:{c_ema50}; font-weight:bold;">₹{stock['ema50_w']:.2f}</span></td>
+            </tr>
+            <tr>
+                <td><b>EPS (TTM):</b> {stock['eps']}</td>
+                <td><b>1Y Target:</b> {stock['target']}</td>
+            </tr>
+            <tr>
+                <td><b>Earnings Date:</b> {stock['earn']}</td>
+                <td><b>Last 3Q Beats:</b> {stock['qhist']}</td>
+            </tr>
         </table>
     </div>"""
+
+now_str = get_ist_now().strftime("%Y-%m-%d %H:%M:%S IST")
+date_only = get_ist_now().strftime("%Y-%m-%d")
 
 html_body = f"""
 <!DOCTYPE html><html><body style="font-family:Arial,sans-serif; color:#202124; max-width:650px; margin:auto; padding:10px;">
     <div style="background:#f8f9fa; border:1px solid #dadce0; padding:12px; border-radius:8px; margin-bottom:15px;">
         <h2 style="margin:0; color:#1a73e8; font-size:18px;">📊 Portfolio Market Intelligence Dashboard</h2>
-        <div style="font-size:12px; color:#5f6368;"><b>Date:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Scanned {scanned} tickers</div>
+        <div style="font-size:12px; color:#5f6368;"><b>Date:</b> {now_str} | Scanned {scanned} tickers</div>
     </div>
     <div style="border:1px solid #dadce0; padding:12px; border-radius:8px; margin-bottom:15px;">
         <h3 style="color:#d93025; margin:0 0 6px 0; font-size:14px;">🚨 SMA50 ALERTS</h3>
@@ -222,21 +305,20 @@ html_body = f"""
     </div>
 </body></html>"""
 
+
 # =====================
 # 6. EMAIL TRANSMISSION
 # =====================
 msg = MIMEText(html_body, "html")
-msg["Subject"] = f"Market Scan Dashboard - {datetime.now().strftime('%Y-%m-%d')}"
+msg["Subject"] = f"Market Scan Dashboard - {date_only}"
 msg["From"] = EMAIL_ADDRESS
-msg["To"] = EMAIL_ADDRESS 
+msg["To"] = EMAIL_ADDRESS
 
 try:
-    # Changed from "://gmail.com" to "smtp.gmail.com"
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         server.send_message(msg)
-    print("Email sent successfully.") 
+        print("Email sent successfully.")
 except Exception as e:
     print(f"Email send failed: {e}")
     sys.exit(1)
-
